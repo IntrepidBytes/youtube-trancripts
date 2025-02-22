@@ -6,6 +6,16 @@ export const fetchCache = 'force-no-store'
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 
+// Free proxy from https://free-proxy-list.net/ - rotate these as needed
+const PROXY_LIST = [
+  'http://proxy-host1:port',
+  'http://proxy-host2:port'
+]
+
+function getRandomProxy() {
+  return PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)]
+}
+
 export async function POST(request: Request) {
   try {
     const { url } = await request.json()
@@ -20,20 +30,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get transcript with try-catch for better error handling
     console.log("Fetching transcript for video:", videoId)
     try {
       console.log("Starting transcript fetch attempt...")
       
-      // Try with all available options
       const options = {
         lang: 'en',
-        country: 'US',
-        userAgent: USER_AGENT,
         headers: {
           'Accept-Language': 'en-US,en;q=0.9',
           'User-Agent': USER_AGENT
         }
+      }
+
+      // In production, use a proxy
+      if (process.env.NODE_ENV === 'production') {
+        console.log("Using proxy in production environment")
+        Object.assign(options, {
+          proxy: getRandomProxy()
+        })
       }
 
       try {
@@ -45,10 +59,12 @@ export async function POST(request: Request) {
           transcript
         })
       } catch (optionsError) {
-        console.log("Failed with options, trying basic fetch:", optionsError)
+        console.log("Failed with options, trying without proxy:", optionsError)
         
-        // Try basic fetch as fallback
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId)
+        // Try one more time without proxy as fallback
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
+          lang: 'en'
+        })
         
         if (!transcript || transcript.length === 0) {
           console.log("No transcript data returned")
