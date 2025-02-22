@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { YoutubeTranscript } from "youtube-transcript"
 
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+
 export async function POST(request: Request) {
   try {
     const { url } = await request.json()
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0',
       },
-      cache: 'no-store'
+      next: { revalidate: 0 }
     })
     
     if (!videoInfoResponse.ok) {
