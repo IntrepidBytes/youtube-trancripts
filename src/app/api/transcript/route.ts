@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0',
+        'Referer': 'https://ytt.ibytes.site'
       },
       next: { revalidate: 0 }
     })
