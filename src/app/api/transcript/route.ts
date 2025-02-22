@@ -7,65 +7,65 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 async function fetchTranscript(videoId: string) {
   try {
-    // First, fetch the transcript list
-    const timedTextUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`
-    const response = await fetch(timedTextUrl, {
+    // First try to get the transcript list
+    const response = await fetch(`https://youtube.com/watch?v=${videoId}`, {
       headers: {
         'User-Agent': USER_AGENT,
         'Accept-Language': 'en-US,en;q=0.9'
-      },
-      cache: 'no-store'
+      }
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch transcript list: ${response.status}`)
+      throw new Error(`Failed to fetch video page: ${response.status}`)
     }
 
-    const text = await response.text()
+    const html = await response.text()
     
-    // Parse the XML to find the transcript URL
-    const match = text.match(/lang_code="([^"]*)".*name="([^"]*)"/)
-    if (!match) {
-      throw new Error('No transcript available')
+    // Extract the captions URL from the YouTube page
+    const innertubeApiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1]
+    const clientVersion = html.match(/"clientVersion":"([^"]+)"/)?.[1]
+    
+    if (!innertubeApiKey || !clientVersion) {
+      throw new Error('Could not extract required keys from video page')
     }
 
-    const [, langCode] = match
-    
-    // Fetch the actual transcript
-    const transcriptUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${langCode}`
-    const transcriptResponse = await fetch(transcriptUrl, {
+    // Get the transcript using YouTube's internal API
+    const transcriptResponse = await fetch(`https://www.youtube.com/youtubei/v1/get_transcript?key=${innertubeApiKey}`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'User-Agent': USER_AGENT,
         'Accept-Language': 'en-US,en;q=0.9'
       },
-      cache: 'no-store'
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: clientVersion,
+          },
+        },
+        videoId: videoId,
+      })
     })
 
     if (!transcriptResponse.ok) {
-      throw new Error(`Failed to fetch transcript: ${transcriptResponse.status}`)
+      throw new Error(`Failed to fetch transcript data: ${transcriptResponse.status}`)
     }
 
-    const transcriptText = await transcriptResponse.text()
+    const data = await transcriptResponse.json()
     
-    // Parse the XML transcript
-    const lines = transcriptText.match(/<text[^>]*>(.*?)<\/text>/g) || []
-    const transcript = lines.map(line => {
-      const startMatch = line.match(/start="([^"]*)"/)
-      const durMatch = line.match(/dur="([^"]*)"/)
-      const textMatch = line.match(/>([^<]*)</)
-      
-      if (!startMatch || !durMatch || !textMatch) return null
-
-      return {
-        text: decodeURIComponent(textMatch[1].replace(/\+/g, ' ')),
-        start: parseFloat(startMatch[1]),
-        duration: parseFloat(durMatch[1])
-      }
-    }).filter(Boolean)
-
-    if (transcript.length === 0) {
-      throw new Error('No transcript content found')
+    // Parse the transcript data
+    const transcriptData = data?.actions?.[0]?.updateEngagementPanelAction?.content?.transcriptRenderer?.content?.transcriptSearchPanelRenderer?.body?.transcriptSegmentListRenderer?.initialSegments || []
+    
+    if (!transcriptData.length) {
+      throw new Error('No transcript content found in response')
     }
+
+    const transcript = transcriptData.map((segment: any) => ({
+      text: segment.transcriptSegmentRenderer.snippet.text,
+      start: parseFloat(segment.transcriptSegmentRenderer.startTimeSeconds),
+      duration: parseFloat(segment.transcriptSegmentRenderer.endTimeSeconds) - parseFloat(segment.transcriptSegmentRenderer.startTimeSeconds)
+    }))
 
     return transcript
   } catch (error) {
