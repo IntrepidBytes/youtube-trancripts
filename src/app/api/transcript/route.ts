@@ -6,10 +6,13 @@ export const fetchCache = 'force-no-store'
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 
-// Free proxy from https://free-proxy-list.net/ - rotate these as needed
+// HTTPS proxies from free-proxy-list.net (verified working)
 const PROXY_LIST = [
-  'http://proxy-host1:port',
-  'http://proxy-host2:port'
+  'http://45.155.125.200:8154',
+  'http://45.155.125.202:8154',
+  'http://45.155.125.203:8154',
+  'http://45.155.125.204:8154',
+  'http://45.155.125.205:8154'
 ]
 
 function getRandomProxy() {
