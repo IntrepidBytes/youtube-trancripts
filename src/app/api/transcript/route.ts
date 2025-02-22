@@ -18,43 +18,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get video details with more reliable fetch configuration
-    const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    console.log("Fetching video details from:", apiUrl.replace(process.env.YOUTUBE_API_KEY || "", "[API_KEY]"))
-    
-    const videoInfoResponse = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0',
-        'Referer': 'https://ytt.ibytes.site'
-      },
-      next: { revalidate: 0 }
-    })
-    
-    if (!videoInfoResponse.ok) {
-      const errorData = await videoInfoResponse.json().catch(() => ({}))
-      console.error("Video info fetch failed:", {
-        status: videoInfoResponse.status,
-        statusText: videoInfoResponse.statusText,
-        error: errorData
-      })
-      return NextResponse.json(
-        { message: `Failed to fetch video details: ${videoInfoResponse.statusText}` },
-        { status: videoInfoResponse.status }
-      )
-    }
-
-    const videoInfo = await videoInfoResponse.json()
-    if (!videoInfo.items?.length) {
-      return NextResponse.json(
-        { message: "Video not found or API key invalid" },
-        { status: 404 }
-      )
-    }
-    
-    const videoTitle = videoInfo.items[0]?.snippet?.title || "Untitled Video"
-
     // Get transcript with try-catch for better error handling
     console.log("Fetching transcript for video:", videoId)
     try {
@@ -69,7 +32,6 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         videoId,
-        videoTitle,
         videoUrl: url,
         transcript
       })
