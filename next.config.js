@@ -22,6 +22,13 @@ const nextConfig = {
   typescript: {
     // Disable TypeScript during production builds
     ignoreBuildErrors: true,
+  },
+  // Add these settings to fix fetch issues
+  experimental: {
+    fetchCache: false,
+  },
+  env: {
+    NODE_OPTIONS: '--dns-result-order=ipv4first'
   }
 }
 
