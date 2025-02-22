@@ -35,8 +35,17 @@ export async function POST(request: Request) {
         videoUrl: url,
         transcript
       })
-    } catch (transcriptError) {
+    } catch (transcriptError: any) {
       console.error("Transcript specific error:", transcriptError)
+      
+      // Check if error message contains "disabled"
+      if (transcriptError.message && transcriptError.message.toLowerCase().includes('disabled')) {
+        return NextResponse.json(
+          { message: "Transcripts are disabled for this video. Please try a different video." },
+          { status: 403 }
+        )
+      }
+
       return NextResponse.json(
         { message: "Failed to fetch transcript. Please try again." },
         { status: 500 }
