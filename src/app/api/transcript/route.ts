@@ -21,15 +21,36 @@ export async function POST(request: Request) {
     // Get transcript with try-catch for better error handling
     console.log("Fetching transcript for video:", videoId)
     try {
+      // Add more debugging
+      console.log("Starting transcript fetch attempt...")
+      
+      // Try with specific language first
+      try {
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
+          lang: 'en'
+        })
+        console.log("Transcript fetch successful with language specification")
+        return NextResponse.json({
+          videoId,
+          videoUrl: url,
+          transcript
+        })
+      } catch (langError) {
+        console.log("Failed with language specification, trying without:", langError)
+      }
+
+      // Try without language specification as fallback
       const transcript = await YoutubeTranscript.fetchTranscript(videoId)
 
       if (!transcript || transcript.length === 0) {
+        console.log("No transcript data returned")
         return NextResponse.json(
           { message: "No transcript available for this video" },
           { status: 404 }
         )
       }
 
+      console.log("Transcript fetch successful")
       return NextResponse.json({
         videoId,
         videoUrl: url,
@@ -37,17 +58,19 @@ export async function POST(request: Request) {
       })
     } catch (transcriptError: any) {
       console.error("Transcript specific error:", transcriptError)
+      console.error("Error details:", {
+        message: transcriptError.message,
+        stack: transcriptError.stack,
+        name: transcriptError.name
+      })
       
-      // Check if error message contains "disabled"
-      if (transcriptError.message && transcriptError.message.toLowerCase().includes('disabled')) {
-        return NextResponse.json(
-          { message: "Transcripts are disabled for this video. Please try a different video." },
-          { status: 403 }
-        )
-      }
-
+      // Return more detailed error information
       return NextResponse.json(
-        { message: "Failed to fetch transcript. Please try again." },
+        { 
+          message: "Failed to fetch transcript. Please try again.",
+          error: transcriptError.message,
+          videoId
+        },
         { status: 500 }
       )
     }
