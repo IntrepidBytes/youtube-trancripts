@@ -7,13 +7,13 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 async function fetchTranscript(videoId: string) {
   try {
-    // Direct request to YouTube's transcript endpoint
-    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
+    // First fetch the video page
+    console.log('Fetching video page...')
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
       headers: {
         'User-Agent': USER_AGENT,
         'Accept-Language': 'en-US,en;q=0.9',
-        'Origin': 'https://www.youtube.com',
-        'Referer': 'https://www.youtube.com/'
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       }
     })
 
@@ -22,49 +22,78 @@ async function fetchTranscript(videoId: string) {
     }
 
     const html = await response.text()
-    
-    // Extract the serializedShareEntity which contains the transcript data
-    const match = html.match(/"serializedShareEntity":"([^"]+)"/)
-    if (!match) {
-      throw new Error('Could not find transcript data')
-    }
+    console.log('Successfully fetched video page')
 
-    // Get the actual transcript data
-    const transcriptUrl = `https://www.youtube.com/youtubei/v1/get_transcript?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8`
-    const transcriptResponse = await fetch(transcriptUrl, {
+    // Extract the INNERTUBE_API_KEY
+    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)
+    if (!apiKeyMatch) {
+      throw new Error('Could not find API key')
+    }
+    const apiKey = apiKeyMatch[1]
+    console.log('Found API key')
+
+    // Extract client version
+    const clientVersionMatch = html.match(/"clientVersion":"([^"]+)"/)
+    if (!clientVersionMatch) {
+      throw new Error('Could not find client version')
+    }
+    const clientVersion = clientVersionMatch[1]
+    console.log('Found client version')
+
+    // Get transcript list
+    console.log('Fetching transcript list...')
+    const transcriptListResponse = await fetch(`https://www.youtube.com/youtubei/v1/get_transcript?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': USER_AGENT,
-        'Origin': 'https://www.youtube.com',
-        'Referer': `https://www.youtube.com/watch?v=${videoId}`
+        'Accept-Language': 'en-US,en;q=0.9'
       },
       body: JSON.stringify({
         context: {
           client: {
-            clientName: 'DESKTOP',
-            clientVersion: '2.20240311.01.00',
-            hl: 'en',
-            gl: 'US'
+            hl: "en",
+            gl: "US",
+            clientName: "WEB",
+            clientVersion: clientVersion,
+            clientScreen: "WATCH",
+            mainAppWebInfo: {
+              graftUrl: `/watch?v=${videoId}`
+            }
           }
         },
-        params: match[1]
+        videoId
       })
     })
 
-    if (!transcriptResponse.ok) {
-      throw new Error(`Failed to fetch transcript: ${transcriptResponse.status}`)
+    if (!transcriptListResponse.ok) {
+      console.error('Transcript list response:', await transcriptListResponse.text())
+      throw new Error(`Failed to fetch transcript list: ${transcriptListResponse.status}`)
     }
 
-    const data = await transcriptResponse.json()
-    const transcriptData = data.actions[0].updateEngagementPanelAction.content.transcriptRenderer.body.transcriptBodyRenderer.cueGroups
+    const transcriptListData = await transcriptListResponse.json()
+    console.log('Transcript list data:', JSON.stringify(transcriptListData, null, 2))
 
-    const transcript = transcriptData.map((group: any) => {
-      const cue = group.transcriptCueGroupRenderer.cues[0].transcriptCueRenderer
+    // Find the English transcript
+    const transcriptRenderer = transcriptListData?.actions?.[0]?.updateEngagementPanelAction?.content?.transcriptRenderer
+    if (!transcriptRenderer) {
+      throw new Error('No transcript data found')
+    }
+
+    const transcriptItems = transcriptRenderer?.content?.transcriptSearchPanelRenderer?.body?.transcriptSegmentListRenderer?.initialSegments
+    if (!transcriptItems?.length) {
+      throw new Error('No transcript segments found')
+    }
+
+    console.log('Found transcript segments')
+
+    // Format the transcript
+    const transcript = transcriptItems.map((segment: any) => {
+      const renderer = segment.transcriptSegmentRenderer
       return {
-        text: cue.cue.simpleText,
-        start: parseFloat(cue.startOffsetMs) / 1000,
-        duration: (parseFloat(cue.durationMs) / 1000)
+        text: renderer.snippet.runs[0].text,
+        start: parseFloat(renderer.startMs) / 1000,
+        duration: (parseFloat(renderer.endMs) - parseFloat(renderer.startMs)) / 1000
       }
     })
 
