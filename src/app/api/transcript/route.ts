@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { YoutubeTranscript } from 'youtube-transcript-api'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -7,80 +8,13 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 async function fetchTranscript(videoId: string) {
   try {
-    // First fetch the video page to get the captions data
-    const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-      }
+    console.log('Fetching transcript with youtube-transcript-api')
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
+      lang: 'en',
+      country: 'US'
     })
-
-    if (!pageResponse.ok) {
-      throw new Error(`Failed to fetch video page: ${pageResponse.status}`)
-    }
-
-    const html = await pageResponse.text()
-    console.log('Successfully fetched video page')
-
-    // Try to find the captions track
-    const captionsMatch = html.match(/"captionTracks":\[(.*?)\]/)
-    if (!captionsMatch) {
-      throw new Error('No captions found in video data')
-    }
-
-    const captions = JSON.parse(`[${captionsMatch[1]}]`)
-    console.log('Found caption tracks:', captions.length)
-
-    // Find English captions or auto-generated English captions
-    const englishCaptions = captions.find((track: any) => 
-      track.languageCode === 'en' || 
-      (track.languageCode === 'en' && track.kind === 'asr')
-    )
-
-    if (!englishCaptions) {
-      throw new Error('No English captions available')
-    }
-
-    const captionsUrl = englishCaptions.baseUrl
-    console.log('Found captions URL')
-
-    // Fetch the actual transcript
-    const transcriptResponse = await fetch(captionsUrl, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    })
-
-    if (!transcriptResponse.ok) {
-      throw new Error(`Failed to fetch transcript: ${transcriptResponse.status}`)
-    }
-
-    const transcriptXml = await transcriptResponse.text()
-    console.log('Successfully fetched transcript XML')
-
-    // Parse the transcript XML
-    const lines = transcriptXml.match(/<text[^>]*>(.*?)<\/text>/g) || []
-    const transcript = lines.map(line => {
-      const startMatch = line.match(/start="([^"]*)"/)
-      const durMatch = line.match(/dur="([^"]*)"/)
-      const textMatch = line.match(/>([^<]*)</)
-
-      if (!startMatch || !durMatch || !textMatch) return null
-
-      return {
-        text: decodeURIComponent(textMatch[1].replace(/\+/g, ' ')),
-        start: parseFloat(startMatch[1]),
-        duration: parseFloat(durMatch[1])
-      }
-    }).filter(Boolean)
-
-    if (transcript.length === 0) {
-      throw new Error('Failed to parse transcript data')
-    }
-
-    console.log('Successfully parsed transcript with', transcript.length, 'lines')
+    
+    console.log('Successfully fetched transcript')
     return transcript
   } catch (error) {
     console.error('Detailed transcript fetch error:', error)
