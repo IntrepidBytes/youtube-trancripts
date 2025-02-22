@@ -1,22 +1,77 @@
 import { NextResponse } from "next/server"
-import { YoutubeTranscript } from "youtube-transcript"
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 
-// HTTPS proxies from free-proxy-list.net (verified working)
-const PROXY_LIST = [
-  'http://45.155.125.200:8154',
-  'http://45.155.125.202:8154',
-  'http://45.155.125.203:8154',
-  'http://45.155.125.204:8154',
-  'http://45.155.125.205:8154'
-]
+async function fetchTranscript(videoId: string) {
+  try {
+    // First, fetch the transcript list
+    const timedTextUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&type=list`
+    const response = await fetch(timedTextUrl, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept-Language': 'en-US,en;q=0.9'
+      },
+      cache: 'no-store'
+    })
 
-function getRandomProxy() {
-  return PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)]
+    if (!response.ok) {
+      throw new Error(`Failed to fetch transcript list: ${response.status}`)
+    }
+
+    const text = await response.text()
+    
+    // Parse the XML to find the transcript URL
+    const match = text.match(/lang_code="([^"]*)".*name="([^"]*)"/)
+    if (!match) {
+      throw new Error('No transcript available')
+    }
+
+    const [, langCode] = match
+    
+    // Fetch the actual transcript
+    const transcriptUrl = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${langCode}`
+    const transcriptResponse = await fetch(transcriptUrl, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept-Language': 'en-US,en;q=0.9'
+      },
+      cache: 'no-store'
+    })
+
+    if (!transcriptResponse.ok) {
+      throw new Error(`Failed to fetch transcript: ${transcriptResponse.status}`)
+    }
+
+    const transcriptText = await transcriptResponse.text()
+    
+    // Parse the XML transcript
+    const lines = transcriptText.match(/<text[^>]*>(.*?)<\/text>/g) || []
+    const transcript = lines.map(line => {
+      const startMatch = line.match(/start="([^"]*)"/)
+      const durMatch = line.match(/dur="([^"]*)"/)
+      const textMatch = line.match(/>([^<]*)</)
+      
+      if (!startMatch || !durMatch || !textMatch) return null
+
+      return {
+        text: decodeURIComponent(textMatch[1].replace(/\+/g, ' ')),
+        start: parseFloat(startMatch[1]),
+        duration: parseFloat(durMatch[1])
+      }
+    }).filter(Boolean)
+
+    if (transcript.length === 0) {
+      throw new Error('No transcript content found')
+    }
+
+    return transcript
+  } catch (error) {
+    console.error('Transcript fetch error:', error)
+    throw error
+  }
 }
 
 export async function POST(request: Request) {
@@ -34,77 +89,30 @@ export async function POST(request: Request) {
     }
 
     console.log("Fetching transcript for video:", videoId)
+    
     try {
-      console.log("Starting transcript fetch attempt...")
+      const transcript = await fetchTranscript(videoId)
       
-      const options = {
-        lang: 'en',
-        headers: {
-          'Accept-Language': 'en-US,en;q=0.9',
-          'User-Agent': USER_AGENT
-        }
-      }
-
-      // In production, use a proxy
-      if (process.env.NODE_ENV === 'production') {
-        console.log("Using proxy in production environment")
-        Object.assign(options, {
-          proxy: getRandomProxy()
-        })
-      }
-
-      try {
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId, options)
-        console.log("Transcript fetch successful with options")
-        return NextResponse.json({
-          videoId,
-          videoUrl: url,
-          transcript
-        })
-      } catch (optionsError) {
-        console.log("Failed with options, trying without proxy:", optionsError)
-        
-        // Try one more time without proxy as fallback
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
-          lang: 'en'
-        })
-        
-        if (!transcript || transcript.length === 0) {
-          console.log("No transcript data returned")
-          return NextResponse.json(
-            { message: "No transcript available for this video" },
-            { status: 404 }
-          )
-        }
-
-        console.log("Basic transcript fetch successful")
-        return NextResponse.json({
-          videoId,
-          videoUrl: url,
-          transcript
-        })
-      }
-    } catch (transcriptError: any) {
-      console.error("Transcript specific error:", transcriptError)
-      console.error("Error details:", {
-        message: transcriptError.message,
-        stack: transcriptError.stack,
-        name: transcriptError.name
+      return NextResponse.json({
+        videoId,
+        videoUrl: url,
+        transcript
       })
-      
+    } catch (error: any) {
+      console.error("Transcript error:", error)
       return NextResponse.json(
         { 
           message: "Failed to fetch transcript. Please try again.",
-          error: transcriptError.message,
+          error: error.message,
           videoId
         },
         { status: 500 }
       )
     }
   } catch (error) {
-    console.error("Transcript fetch error:", error)
+    console.error("Request error:", error)
     return NextResponse.json(
-      { message: error instanceof Error ? error.message : "Failed to fetch transcript" },
+      { message: error instanceof Error ? error.message : "Failed to process request" },
       { status: 500 }
     )
   }
