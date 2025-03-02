@@ -1,4 +1,4 @@
-# YouTube Transcript Web App
+# YouTube Transcript Web App!
 
 A modern web application for fetching, viewing, and managing YouTube video transcripts. Built with Next.js 14, TypeScript, and Tailwind CSS.
 
